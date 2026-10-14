@@ -1,4 +1,4 @@
-name: RSS Groq Telegram test
+name: ai-news-summary-agent
 
 on:
   workflow_dispatch:
