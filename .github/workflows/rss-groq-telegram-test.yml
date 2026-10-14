@@ -2,6 +2,8 @@ name: ai-news-summary-agent
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '30 12 * * *'
 
 permissions:
   contents: write
@@ -43,8 +45,8 @@ jobs:
       - name: Install Groq client
         run: python -m pip install --disable-pip-version-check groq
 
-      - name: Generate one summary and send Telegram test
-        run: python generate_groq_report.py --limit 1 --telegram-first
+      - name: Generate daily report and notify Telegram
+        run: python generate_groq_report.py --limit 50 --telegram-report-url https://piyush-agarwal20.github.io/ai-news-summary-agent/latest.html
 
       - name: Commit generated test report
         run: |

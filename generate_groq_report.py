@@ -266,11 +266,22 @@ def send_first_to_telegram(item: dict, chat_id: str, bot_token: str) -> None:
         raise RuntimeError(f"Telegram API rejected message: {result.get('description', 'unknown error')}")
 
 
+def send_report_link(url: str, chat_id: str, bot_token: str) -> None:
+    message = f'<b>Your daily AI digest is ready</b>\n\n<a href="{html.escape(url, quote=True)}">Open today\'s report →</a>'
+    payload = urlencode({'chat_id': chat_id, 'text': message, 'parse_mode': 'HTML', 'disable_web_page_preview': 'false'}).encode()
+    request = Request(f'https://api.telegram.org/bot{bot_token}/sendMessage', data=payload, method='POST')
+    with urlopen(request, timeout=30) as response:
+        result = json.loads(response.read().decode())
+    if not result.get('ok'):
+        raise RuntimeError(f"Telegram API rejected message: {result.get('description', 'unknown error')}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument('--limit', type=int, default=50, help='articles for this test/run')
     parser.add_argument('--hours', type=int, default=24)
     parser.add_argument('--telegram-first', action='store_true', help='send the first successful summary to Telegram')
+    parser.add_argument('--telegram-report-url', help='send the published report URL to Telegram')
     args = parser.parse_args()
     feeds = feed_urls()
     cutoff = datetime.now(timezone.utc) - timedelta(hours=args.hours)
@@ -303,6 +314,14 @@ def main() -> int:
             return 1
         send_first_to_telegram(summaries[0], chat_id, bot_token)
         print('telegram_first=sent')
+    if args.telegram_report_url:
+        chat_id = os.getenv('TELEGRAM_CHAT_ID')
+        bot_token = os.getenv('TELEGRAM_BOT_TOKEN')
+        if not chat_id or not bot_token:
+            print('Telegram requested but TELEGRAM_CHAT_ID or TELEGRAM_BOT_TOKEN is missing.')
+            return 1
+        send_report_link(args.telegram_report_url, chat_id, bot_token)
+        print('telegram_report=sent')
     print(f'summarized={len(summaries)} failed={len(failures)} report={out}')
     return 0
 
