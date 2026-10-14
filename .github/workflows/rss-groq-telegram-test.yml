@@ -1,0 +1,55 @@
+name: RSS Groq Telegram test
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  test-first-article:
+    runs-on: ubuntu-latest
+    env:
+      GROQ_API_KEY_1: ${{ secrets.GROQ_API_KEY_1 }}
+      GROQ_API_KEY_2: ${{ secrets.GROQ_API_KEY_2 }}
+      GROQ_API_KEY_3: ${{ secrets.GROQ_API_KEY_3 }}
+      GROQ_API_KEY_4: ${{ secrets.GROQ_API_KEY_4 }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      GOOGLE_ALERT_FEEDS: |
+        https://www.google.com/alerts/feeds/05120019184513395012/12941640953345234147
+        https://www.google.com/alerts/feeds/05120019184513395012/5129362966078204044
+        https://www.google.com/alerts/feeds/05120019184513395012/9868539178367263295
+        https://www.google.com/alerts/feeds/05120019184513395012/9868539178367266605
+        https://www.google.com/alerts/feeds/05120019184513395012/2479821482795364644
+        https://www.google.com/alerts/feeds/05120019184513395012/6331282686492681587
+        https://www.google.com/alerts/feeds/05120019184513395012/9868539178367266460
+        https://www.google.com/alerts/feeds/05120019184513395012/9868539178367265584
+        https://www.google.com/alerts/feeds/05120019184513395012/6331282686492684036
+        https://www.google.com/alerts/feeds/05120019184513395012/6331282686492681492
+        https://www.google.com/alerts/feeds/05120019184513395012/6331282686492684001
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Groq client
+        run: python -m pip install --disable-pip-version-check groq
+
+      - name: Generate one summary and send Telegram test
+        run: python generate_groq_report.py --limit 1 --telegram-first
+
+      - name: Commit generated test report
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add latest.html reports/
+          git diff --cached --quiet || git commit -m 'Publish first Groq RSS summary test'
+          git push

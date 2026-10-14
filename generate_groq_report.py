@@ -8,6 +8,7 @@ import json
 import os
 import re
 import time
+from urllib.parse import urlencode
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
@@ -48,6 +49,15 @@ def groq_keys() -> list[str]:
     if not values:
         raise RuntimeError(f'No Groq keys found; expected {FALLBACK_ENV}')
     return sorted(values)
+
+
+def feed_urls() -> list[str]:
+    configured = os.getenv('GOOGLE_ALERT_FEEDS', '')
+    if configured:
+        return [line.strip() for line in configured.splitlines() if line.strip()]
+    if FEED_FILE.exists():
+        return [line.strip() for line in FEED_FILE.read_text().splitlines() if line.strip()]
+    raise RuntimeError('No Google Alert RSS feeds configured')
 
 
 def parse_datetime(value: str | None) -> datetime | None:
@@ -241,12 +251,28 @@ def write_atomic(path: Path, content: str) -> None:
     temporary.replace(path)
 
 
+def send_first_to_telegram(item: dict, chat_id: str, bot_token: str) -> None:
+    lessons = '\n'.join(f'- {lesson}' for lesson in item['lessons'])
+    message = (f"<b>{html.escape(item['title'])}</b>\n\n"
+               f"{html.escape(item['summary'])}\n\n"
+               f"<b>Lessons</b>\n{html.escape(lessons)}\n\n"
+               f"<b>Crux:</b> {html.escape(item['crux'])}\n\n"
+               f"<a href=\"{html.escape(item['link'], quote=True)}\">Read original article</a>")
+    payload = urlencode({'chat_id': chat_id, 'text': message, 'parse_mode': 'HTML', 'disable_web_page_preview': 'true'}).encode()
+    request = Request(f'https://api.telegram.org/bot{bot_token}/sendMessage', data=payload, method='POST')
+    with urlopen(request, timeout=30) as response:
+        result = json.loads(response.read().decode())
+    if not result.get('ok'):
+        raise RuntimeError(f"Telegram API rejected message: {result.get('description', 'unknown error')}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument('--limit', type=int, default=50, help='articles for this test/run')
     parser.add_argument('--hours', type=int, default=24)
+    parser.add_argument('--telegram-first', action='store_true', help='send the first successful summary to Telegram')
     args = parser.parse_args()
-    feeds = [x.strip() for x in FEED_FILE.read_text().splitlines() if x.strip()]
+    feeds = feed_urls()
     cutoff = datetime.now(timezone.utc) - timedelta(hours=args.hours)
     raw: list[dict] = []
     for number, feed in enumerate(feeds, 1):
@@ -269,6 +295,14 @@ def main() -> int:
         return 1
     write_atomic(out, report)
     write_atomic(ROOT / 'latest.html', report)
+    if args.telegram_first:
+        chat_id = os.getenv('TELEGRAM_CHAT_ID')
+        bot_token = os.getenv('TELEGRAM_BOT_TOKEN')
+        if not chat_id or not bot_token:
+            print('Telegram requested but TELEGRAM_CHAT_ID or TELEGRAM_BOT_TOKEN is missing.')
+            return 1
+        send_first_to_telegram(summaries[0], chat_id, bot_token)
+        print('telegram_first=sent')
     print(f'summarized={len(summaries)} failed={len(failures)} report={out}')
     return 0
 
